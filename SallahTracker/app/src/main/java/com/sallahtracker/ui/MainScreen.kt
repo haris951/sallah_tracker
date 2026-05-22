@@ -19,6 +19,7 @@ import com.sallahtracker.ui.qaza.QazaScreen
 import com.sallahtracker.ui.qaza.QazaViewModel
 import com.sallahtracker.ui.history.HistoryScreen
 import com.sallahtracker.ui.history.HistoryViewModel
+import com.sallahtracker.ui.settings.LocationSettingsScreen
 import com.sallahtracker.ui.settings.SettingsScreen
 import com.sallahtracker.ui.settings.SettingsViewModel
 import com.sallahtracker.ui.navigation.Screen
@@ -27,12 +28,24 @@ import com.sallahtracker.ui.theme.PrimaryGreen
 import com.sallahtracker.ui.theme.BeigeBackground
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import android.app.Application
 
 @Composable
 fun MainScreen() {
     val navController = rememberNavController()
     val context = LocalContext.current
-    val repository = (context.applicationContext as SallahApp).repository
+    val sallahApp = context.applicationContext as SallahApp
+    val repository = sallahApp.repository
+    
+    // Use a shared SettingsViewModel for both Settings and LocationSettings screens
+    val settingsViewModel: SettingsViewModel = viewModel(
+        factory = object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                @Suppress("UNCHECKED_CAST")
+                return SettingsViewModel(context.applicationContext as Application) as T
+            }
+        }
+    )
     
     Scaffold(
         bottomBar = {
@@ -77,7 +90,7 @@ fun MainScreen() {
                     factory = object : ViewModelProvider.Factory {
                         override fun <T : ViewModel> create(modelClass: Class<T>): T {
                             @Suppress("UNCHECKED_CAST")
-                            return HomeViewModel(repository) as T
+                            return HomeViewModel(repository, sallahApp) as T
                         }
                     }
                 )
@@ -106,8 +119,18 @@ fun MainScreen() {
                 HistoryScreen(historyViewModel)
             }
             composable(Screen.Settings.route) {
-                val settingsViewModel: SettingsViewModel = viewModel()
-                SettingsScreen(settingsViewModel)
+                SettingsScreen(
+                    viewModel = settingsViewModel,
+                    onNavigateToLocationSettings = {
+                        navController.navigate(Screen.LocationSettings.route)
+                    }
+                )
+            }
+            composable(Screen.LocationSettings.route) {
+                LocationSettingsScreen(
+                    viewModel = settingsViewModel,
+                    onBackClick = { navController.popBackStack() }
+                )
             }
         }
     }

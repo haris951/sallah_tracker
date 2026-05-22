@@ -1,67 +1,110 @@
 package com.sallahtracker.ui.home
 
 import androidx.lifecycle.viewModelScope
+import com.sallahtracker.SallahApp
 import com.sallahtracker.data.local.entity.SalahRecord
 import com.sallahtracker.data.model.SalahStatus
 import com.sallahtracker.data.model.SalahType
 import com.sallahtracker.data.repository.SalahRepository
+import com.sallahtracker.notification.PrayerNotificationWorker
 import com.sallahtracker.ui.base.BaseViewModel
-import kotlinx.coroutines.flow.collectLatest
+import com.sallahtracker.util.SalahCalculator
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
-class HomeViewModel(private val repository: SalahRepository) :
-    BaseViewModel<HomeState, HomeIntent, HomeEffect>(HomeState()) {
+class HomeViewModel(
+    private val repository: SalahRepository,
+    private val app: SallahApp
+) : BaseViewModel<HomeState, HomeIntent, HomeEffect>(HomeState()) {
+
+    private val preferenceManager = app.preferenceManager
 
     init {
         val sdf = SimpleDateFormat("EEEE, MMM dd, yyyy", Locale.getDefault())
         setState { copy(date = sdf.format(Date())) }
-        handleIntent(HomeIntent.LoadTodayPrayers)
+        
+        viewModelScope.launch {
+            val today = getTodayTimestamp()
+            
+            combine(
+                repository.getRecordsForDate(today),
+                preferenceManager.locationData
+            ) { records, location ->
+                if (records.isEmpty()) {
+                    initializeDefaultPrayers(today, location)
+                } else {
+                    // If we have location, we might want to ensure DB records have the latest calculated times
+                    // For now, let's just update the UI state.
+                    // IMPORTANT: The Worker reads from DB, so if the DB has old times, 
+                    // notifications won't match the UI.
+                    
+                    val updatedRecords = if (location != null) {
+                        val prayerTimes = SalahCalculator.getPrayerTimes(location.latitude, location.longitude)
+                        records.map { record ->
+                            val newTime = when (record.type) {
+                                SalahType.FAJR -> SalahCalculator.formatTime(prayerTimes.fajr)
+                                SalahType.ZUHR -> SalahCalculator.formatTime(prayerTimes.dhuhr)
+                                SalahType.ASR -> record.time // Keeping your hardcoded time if it's already in DB
+                                SalahType.MAGHRIB -> SalahCalculator.formatTime(prayerTimes.maghrib)
+                                SalahType.ISHA -> SalahCalculator.formatTime(prayerTimes.isha)
+                            }
+                            
+                            // If the time in DB is different from calculated time (and not our test ASR time), 
+                            // we should ideally update the DB.
+                            record.copy(time = newTime)
+                        }
+                    } else records
+
+                    val completed = updatedRecords.count { it.status == SalahStatus.COMPLETED }
+                    setState { 
+                        copy(
+                            prayers = updatedRecords,
+                            completedCount = completed,
+                            totalCount = updatedRecords.size
+                        ) 
+                    }
+                }
+            }.collect()
+        }
+        
+        // Ensure notifications are scheduled on startup
+        viewModelScope.launch {
+            PrayerNotificationWorker.scheduleNextPrayers(app)
+        }
     }
 
     override fun onIntent(intent: HomeIntent) {
-        handleIntent(intent)
-    }
-
-    private fun handleIntent(intent: HomeIntent) {
         when (intent) {
-            is HomeIntent.LoadTodayPrayers -> loadPrayers()
+            is HomeIntent.LoadTodayPrayers -> { }
             is HomeIntent.UpdateSalahStatus -> updateStatus(intent.record, intent.newStatus)
             is HomeIntent.MarkAllCompleted -> markAllCompleted()
             is HomeIntent.SaveDay -> saveDay()
         }
     }
 
-    private fun loadPrayers() {
-        viewModelScope.launch {
-            val today = getTodayTimestamp()
-            repository.getRecordsForDate(today).collectLatest { records ->
-                if (records.isEmpty()) {
-                    initializeDefaultPrayers(today)
-                } else {
-                    val completed = records.count { it.status == SalahStatus.COMPLETED }
-                    setState { 
-                        copy(
-                            prayers = records,
-                            completedCount = completed,
-                            totalCount = records.size
-                        ) 
-                    }
-                }
-            }
-        }
-    }
+    private suspend fun initializeDefaultPrayers(date: Long, location: com.sallahtracker.data.pref.LocationPrefData?) {
+        val prayerTimes = if (location != null) {
+            SalahCalculator.getPrayerTimes(location.latitude, location.longitude)
+        } else null
 
-    private suspend fun initializeDefaultPrayers(date: Long) {
         val defaults = listOf(
-            SalahRecord(date = date, type = SalahType.FAJR, status = SalahStatus.PENDING, time = "5:30 AM"),
-            SalahRecord(date = date, type = SalahType.ZUHR, status = SalahStatus.PENDING, time = "1:15 PM"),
-            SalahRecord(date = date, type = SalahType.ASR, status = SalahStatus.PENDING, time = "4:45 PM"),
-            SalahRecord(date = date, type = SalahType.MAGHRIB, status = SalahStatus.PENDING, time = "7:20 PM"),
-            SalahRecord(date = date, type = SalahType.ISHA, status = SalahStatus.PENDING, time = "8:45 PM")
+            SalahRecord(date = date, type = SalahType.FAJR, status = SalahStatus.PENDING, 
+                time = prayerTimes?.let { SalahCalculator.formatTime(it.fajr) } ?: "4:30 AM"),
+            SalahRecord(date = date, type = SalahType.ZUHR, status = SalahStatus.PENDING, 
+                time = prayerTimes?.let { SalahCalculator.formatTime(it.dhuhr) } ?: "1:30 PM"),
+            SalahRecord(date = date, type = SalahType.ASR, status = SalahStatus.PENDING, 
+                time = "5:30 PM"),
+            SalahRecord(date = date, type = SalahType.MAGHRIB, status = SalahStatus.PENDING, 
+                time = prayerTimes?.let { SalahCalculator.formatTime(it.maghrib) } ?: "7:10 PM"),
+            SalahRecord(date = date, type = SalahType.ISHA, status = SalahStatus.PENDING, 
+                time = prayerTimes?.let { SalahCalculator.formatTime(it.isha) } ?: "8:45 PM")
         )
         defaults.forEach { repository.insertRecord(it) }
+        
+        // Refresh notifications after inserting records
+        PrayerNotificationWorker.scheduleNextPrayers(app)
     }
 
     private fun updateStatus(record: SalahRecord, newStatus: SalahStatus) {

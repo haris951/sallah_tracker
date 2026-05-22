@@ -11,9 +11,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,10 +22,24 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sallahtracker.ui.theme.*
+import kotlinx.coroutines.flow.collectLatest
 
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel) {
+fun SettingsScreen(
+    viewModel: SettingsViewModel,
+    onNavigateToLocationSettings: () -> Unit
+) {
     val state by viewModel.uiState.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.uiEffect.collectLatest { effect ->
+            when (effect) {
+                is SettingsEffect.NavigateToLocationSettings -> onNavigateToLocationSettings()
+                is SettingsEffect.ShowToast -> { /* Handle toast if needed */ }
+                else -> {}
+            }
+        }
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -63,14 +75,33 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
             item {
                 SettingsSectionTitle("NOTIFICATIONS")
                 SettingsCard {
-                    ToggleSettingItem(
-                        icon = Icons.Outlined.Notifications,
-                        title = "Prayer Notifications",
-                        subtitle = "Enable prayer time reminders",
-                        checked = state.isNotificationsEnabled,
-                        onCheckedChange = { viewModel.onIntent(SettingsIntent.ToggleNotifications(it)) },
-                        iconColor = PrimaryGreen
-                    )
+                    Column {
+                        ToggleSettingItem(
+                            icon = Icons.Outlined.Notifications,
+                            title = "Prayer Notifications",
+                            subtitle = "Enable prayer time reminders",
+                            checked = state.isNotificationsEnabled,
+                            onCheckedChange = { viewModel.onIntent(SettingsIntent.ToggleNotifications(it)) },
+                            iconColor = PrimaryGreen
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(alpha = 0.3f))
+                        
+                        OffsetSettingItem(
+                            currentOffset = state.notificationOffset,
+                            onOffsetChange = { viewModel.onIntent(SettingsIntent.UpdateNotificationOffset(it)) }
+                        )
+                        
+                        HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(alpha = 0.3f))
+                        
+                        // TEST NOTIFICATION BUTTON
+                        ClickableSettingItem(
+                            icon = Icons.Outlined.BugReport,
+                            title = "Test Notification",
+                            subtitle = "Click to receive a test alert in 5 seconds",
+                            onClick = { viewModel.onIntent(SettingsIntent.SendTestNotification) },
+                            iconColor = GoldCard
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(20.dp))
             }
@@ -79,12 +110,11 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                 SettingsSectionTitle("LOCATION")
                 SettingsCard {
                     Column {
-                        ToggleSettingItem(
+                        ClickableSettingItem(
                             icon = Icons.Outlined.LocationOn,
-                            title = "Auto-detect Location",
-                            subtitle = "Automatically calculate prayer times",
-                            checked = state.isAutoLocationEnabled,
-                            onCheckedChange = { viewModel.onIntent(SettingsIntent.ToggleAutoLocation(it)) },
+                            title = "Location Settings",
+                            subtitle = "Set your location for prayer times",
+                            onClick = { viewModel.onIntent(SettingsIntent.OpenLocationSettings) },
                             iconColor = PrimaryGreen
                         )
                         HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(alpha = 0.3f))
@@ -133,6 +163,50 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
 
             item {
                 Footer()
+            }
+        }
+    }
+}
+
+@Composable
+fun OffsetSettingItem(currentOffset: Int, onOffsetChange: (Int) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(BeigeBackground),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Timer,
+                contentDescription = null,
+                tint = PrimaryGreen,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = "Reminder Time", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextDark)
+            val label = when {
+                currentOffset < 0 -> "${Math.abs(currentOffset)} mins before"
+                currentOffset > 0 -> "${currentOffset} mins after"
+                else -> "On time"
+            }
+            Text(text = label, fontSize = 14.sp, color = SecondaryGreen, fontWeight = FontWeight.Medium)
+        }
+        
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { onOffsetChange(currentOffset - 5) }) {
+                Icon(Icons.Default.Remove, contentDescription = "Decrease", tint = TextLight)
+            }
+            IconButton(onClick = { onOffsetChange(currentOffset + 5) }) {
+                Icon(Icons.Default.Add, contentDescription = "Increase", tint = TextLight)
             }
         }
     }
@@ -265,7 +339,7 @@ fun InfoSettingItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically
     ) {
         SettingIcon(icon, iconColor)
         Spacer(modifier = Modifier.width(16.dp))
