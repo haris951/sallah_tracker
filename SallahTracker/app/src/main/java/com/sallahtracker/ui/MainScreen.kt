@@ -20,6 +20,7 @@ import com.sallahtracker.ui.qaza.QazaViewModel
 import com.sallahtracker.ui.history.HistoryScreen
 import com.sallahtracker.ui.history.HistoryViewModel
 import com.sallahtracker.ui.settings.LocationSettingsScreen
+import com.sallahtracker.ui.settings.PrayerAlarmsScreen
 import com.sallahtracker.ui.settings.SettingsScreen
 import com.sallahtracker.ui.settings.SettingsViewModel
 import com.sallahtracker.ui.navigation.Screen
@@ -37,7 +38,7 @@ fun MainScreen() {
     val sallahApp = context.applicationContext as SallahApp
     val repository = sallahApp.repository
     
-    // Use a shared SettingsViewModel for both Settings and LocationSettings screens
+    // Use a shared SettingsViewModel for all settings screens
     val settingsViewModel: SettingsViewModel = viewModel(
         factory = object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -123,11 +124,20 @@ fun MainScreen() {
                     viewModel = settingsViewModel,
                     onNavigateToLocationSettings = {
                         navController.navigate(Screen.LocationSettings.route)
+                    },
+                    onNavigateToPrayerAlarms = {
+                        navController.navigate(Screen.PrayerAlarms.route)
                     }
                 )
             }
             composable(Screen.LocationSettings.route) {
                 LocationSettingsScreen(
+                    viewModel = settingsViewModel,
+                    onBackClick = { navController.popBackStack() }
+                )
+            }
+            composable(Screen.PrayerAlarms.route) {
+                PrayerAlarmsScreen(
                     viewModel = settingsViewModel,
                     onBackClick = { navController.popBackStack() }
                 )

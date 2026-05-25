@@ -13,6 +13,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object History : Screen("history", "History", Icons.Default.DateRange)
     object Settings : Screen("settings", "Settings", Icons.Default.Settings)
     object LocationSettings : Screen("location_settings", "Location Settings", Icons.Default.Settings)
+    object PrayerAlarms : Screen("prayer_alarms", "Prayer Alarms", Icons.Default.Settings)
 }
 
 val bottomNavItems = listOf(

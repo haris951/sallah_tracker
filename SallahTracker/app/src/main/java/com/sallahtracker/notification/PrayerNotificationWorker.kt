@@ -76,9 +76,8 @@ class PrayerNotificationWorker(
                 set(Calendar.MILLISECOND, 0)
             }.timeInMillis
 
-            // Fetch records from Database (This makes it respect your hardcoded 4:16 PM)
+            // Fetch records from Database
             val records = repository.getRecordsForDate(today).first()
-            val offset = pref.notificationOffset.first()
             val now = Date()
             val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
 
@@ -93,23 +92,31 @@ class PrayerNotificationWorker(
                     calendar.set(Calendar.HOUR_OF_DAY, timeCal.get(Calendar.HOUR_OF_DAY))
                     calendar.set(Calendar.MINUTE, timeCal.get(Calendar.MINUTE))
                     calendar.set(Calendar.SECOND, 0)
+                    
+                    // Use individual alarm offset
+                    val offset = pref.getPrayerOffset(record.type).first()
                     calendar.add(Calendar.MINUTE, offset)
 
-                    val delay = calendar.timeInMillis - now.time
-                    if (delay > 0) {
-                        Log.d("PrayerWorker", "Scheduled ${record.type.displayName} at ${calendar.time} (In ${delay/1000}s)")
-                        val workRequest = OneTimeWorkRequestBuilder<PrayerNotificationWorker>()
-                            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
-                            .setInputData(workDataOf("prayer_name" to record.type.displayName))
-                            .addTag("prayer_${record.type.name}")
-                            .build()
-
-                        workManager.enqueueUniqueWork(
-                            "prayer_${record.type.name}",
-                            ExistingWorkPolicy.REPLACE,
-                            workRequest
-                        )
+                    var delay = calendar.timeInMillis - now.time
+                    
+                    // FIX: If the time has already passed for today, schedule it for tomorrow
+                    if (delay <= 0) {
+                        calendar.add(Calendar.DAY_OF_YEAR, 1)
+                        delay = calendar.timeInMillis - now.time
                     }
+
+                    Log.d("PrayerWorker", "Scheduled ${record.type.displayName} at ${calendar.time} (In ${delay/1000}s)")
+                    val workRequest = OneTimeWorkRequestBuilder<PrayerNotificationWorker>()
+                        .setInitialDelay(delay, TimeUnit.MILLISECONDS)
+                        .setInputData(workDataOf("prayer_name" to record.type.displayName))
+                        .addTag("prayer_${record.type.name}")
+                        .build()
+
+                    workManager.enqueueUniqueWork(
+                        "prayer_${record.type.name}",
+                        ExistingWorkPolicy.REPLACE,
+                        workRequest
+                    )
                 } catch (e: Exception) {
                     Log.e("PrayerWorker", "Error parsing time for ${record.type}: ${record.time}")
                 }

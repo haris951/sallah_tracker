@@ -27,7 +27,8 @@ import kotlinx.coroutines.flow.collectLatest
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
-    onNavigateToLocationSettings: () -> Unit
+    onNavigateToLocationSettings: () -> Unit,
+    onNavigateToPrayerAlarms: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
 
@@ -35,6 +36,7 @@ fun SettingsScreen(
         viewModel.uiEffect.collectLatest { effect ->
             when (effect) {
                 is SettingsEffect.NavigateToLocationSettings -> onNavigateToLocationSettings()
+                is SettingsEffect.NavigateToPrayerAlarms -> onNavigateToPrayerAlarms()
                 is SettingsEffect.ShowToast -> { /* Handle toast if needed */ }
                 else -> {}
             }
@@ -86,6 +88,15 @@ fun SettingsScreen(
                         )
                         HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(alpha = 0.3f))
                         
+                        ClickableSettingItem(
+                            icon = Icons.Outlined.Alarm,
+                            title = "Prayer Alarms",
+                            subtitle = "Configure alarm sounds and timing",
+                            onClick = { viewModel.onIntent(SettingsIntent.OpenPrayerAlarms) },
+                            iconColor = PrimaryGreen
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(alpha = 0.3f))
+
                         OffsetSettingItem(
                             currentOffset = state.notificationOffset,
                             onOffsetChange = { viewModel.onIntent(SettingsIntent.UpdateNotificationOffset(it)) }
