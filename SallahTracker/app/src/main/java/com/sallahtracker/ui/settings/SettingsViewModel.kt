@@ -1,10 +1,15 @@
 package com.sallahtracker.ui.settings
 
 import android.annotation.SuppressLint
+import android.app.AlarmManager
 import android.app.Application
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
 import android.location.Geocoder
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.os.Build
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -17,6 +22,8 @@ import com.sallahtracker.R
 import com.sallahtracker.SallahApp
 import com.sallahtracker.data.model.SalahType
 import com.sallahtracker.data.pref.PreferenceManager
+import com.sallahtracker.notification.AlarmReceiver
+import com.sallahtracker.notification.PrayerAlarmScheduler
 import com.sallahtracker.notification.PrayerNotificationWorker
 import com.sallahtracker.ui.base.MviViewModel
 import kotlinx.coroutines.flow.*
@@ -124,6 +131,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             is SettingsIntent.OpenHelpAndSupport -> setEffect(SettingsEffect.ShowToast("Help & Support Clicked"))
             is SettingsIntent.RateApp -> setEffect(SettingsEffect.ShowToast("Rate Us Clicked"))
             is SettingsIntent.SendTestNotification -> sendTestNotification()
+            is SettingsIntent.SendTestAlarm -> sendTestAlarm()
             is SettingsIntent.DetectLocation -> detectLocation()
             is SettingsIntent.SaveLocation -> saveLocation()
             
@@ -131,11 +139,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             is SettingsIntent.TogglePrayerAlarm -> {
                 viewModelScope.launch {
                     preferenceManager.setAlarmEnabled(intent.type, intent.enabled)
+                    // Reschedule on change
+                    PrayerAlarmScheduler(getApplication()).scheduleAlarms()
                 }
             }
             is SettingsIntent.UpdatePrayerAlarmOffset -> {
                 viewModelScope.launch {
                     preferenceManager.setPrayerOffset(intent.type, intent.offset)
+                    // Reschedule on change
+                    PrayerAlarmScheduler(getApplication()).scheduleAlarms()
                 }
             }
             is SettingsIntent.SelectAlarmSound -> {
@@ -152,8 +164,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             }
             is SettingsIntent.SaveAlarmSettings -> {
                 viewModelScope.launch {
+                    // Update both Notifications and full-screen Alarms
                     PrayerNotificationWorker.scheduleNextPrayers(getApplication())
-                    setEffect(SettingsEffect.ShowToast("Alarm settings saved!"))
+                    
+                    val scheduler = PrayerAlarmScheduler(getApplication())
+                    scheduler.scheduleAlarms()
+                    
+                    setEffect(SettingsEffect.ShowToast("Alarm settings saved and scheduled!"))
                 }
             }
         }
@@ -215,11 +232,39 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private fun sendTestNotification() {
         val workRequest = OneTimeWorkRequestBuilder<PrayerNotificationWorker>()
             .setInitialDelay(5, TimeUnit.SECONDS)
-            .setInputData(workDataOf("prayer_name" to "Test Alarm"))
+            .setInputData(workDataOf("prayer_name" to "Test Notification"))
             .build()
 
         WorkManager.getInstance(getApplication()).enqueue(workRequest)
-        setEffect(SettingsEffect.ShowToast("Test alarm will arrive in 5 seconds"))
+        setEffect(SettingsEffect.ShowToast("Test notification will arrive in 5 seconds"))
+    }
+
+    private fun sendTestAlarm() {
+        val context = getApplication<Application>()
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(context, AlarmReceiver::class.java).apply {
+            putExtra("prayer_name", "Test Prayer")
+            action = AlarmReceiver.ACTION_TRIGGER
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            999, // Unique request code for test
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val triggerTime = System.currentTimeMillis() + 5000
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (alarmManager.canScheduleExactAlarms()) {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+            } else {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+            }
+        } else {
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+        }
+        setEffect(SettingsEffect.ShowToast("Test alarm will work in 5 seconds"))
     }
 
     @SuppressLint("MissingPermission")
@@ -276,7 +321,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     location.country
                 )
                 setState { copy(locationSaved = true) }
+                
+                // Re-schedule alarms with new location
                 PrayerNotificationWorker.scheduleNextPrayers(getApplication())
+                val scheduler = PrayerAlarmScheduler(getApplication())
+                scheduler.scheduleAlarms()
+                
                 setEffect(SettingsEffect.ShowToast("Location saved successfully!"))
             }
         }

@@ -49,9 +49,8 @@ class PrayerNotificationWorker(
             .setContentTitle("Time for $prayerName")
             .setContentText("It's time for $prayerName prayer. May Allah accept your prayers.")
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .build()
@@ -65,10 +64,12 @@ class PrayerNotificationWorker(
             val repository = app.repository
             val pref = app.preferenceManager
             
+            // Also trigger the Alarm Scheduler here to ensure consistency
+            PrayerAlarmScheduler(context).scheduleAlarms()
+
             val enabled = pref.notificationsEnabled.first()
             if (!enabled) return
 
-            // Get today's timestamp (midnight)
             val today = Calendar.getInstance().apply {
                 set(Calendar.HOUR_OF_DAY, 0)
                 set(Calendar.MINUTE, 0)
@@ -76,7 +77,6 @@ class PrayerNotificationWorker(
                 set(Calendar.MILLISECOND, 0)
             }.timeInMillis
 
-            // Fetch records from Database
             val records = repository.getRecordsForDate(today).first()
             val now = Date()
             val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
@@ -93,19 +93,15 @@ class PrayerNotificationWorker(
                     calendar.set(Calendar.MINUTE, timeCal.get(Calendar.MINUTE))
                     calendar.set(Calendar.SECOND, 0)
                     
-                    // Use individual alarm offset
-                    val offset = pref.getPrayerOffset(record.type).first()
+                    val offset = pref.notificationOffset.first() // Using global notification offset
                     calendar.add(Calendar.MINUTE, offset)
 
                     var delay = calendar.timeInMillis - now.time
-                    
-                    // FIX: If the time has already passed for today, schedule it for tomorrow
                     if (delay <= 0) {
                         calendar.add(Calendar.DAY_OF_YEAR, 1)
                         delay = calendar.timeInMillis - now.time
                     }
 
-                    Log.d("PrayerWorker", "Scheduled ${record.type.displayName} at ${calendar.time} (In ${delay/1000}s)")
                     val workRequest = OneTimeWorkRequestBuilder<PrayerNotificationWorker>()
                         .setInitialDelay(delay, TimeUnit.MILLISECONDS)
                         .setInputData(workDataOf("prayer_name" to record.type.displayName))

@@ -6,6 +6,7 @@ import com.sallahtracker.data.local.entity.SalahRecord
 import com.sallahtracker.data.model.SalahStatus
 import com.sallahtracker.data.model.SalahType
 import com.sallahtracker.data.repository.SalahRepository
+import com.sallahtracker.notification.PrayerAlarmScheduler
 import com.sallahtracker.notification.PrayerNotificationWorker
 import com.sallahtracker.ui.base.BaseViewModel
 import com.sallahtracker.util.SalahCalculator
@@ -35,24 +36,16 @@ class HomeViewModel(
                 if (records.isEmpty()) {
                     initializeDefaultPrayers(today, location)
                 } else {
-                    // If we have location, we might want to ensure DB records have the latest calculated times
-                    // For now, let's just update the UI state.
-                    // IMPORTANT: The Worker reads from DB, so if the DB has old times, 
-                    // notifications won't match the UI.
-                    
                     val updatedRecords = if (location != null) {
                         val prayerTimes = SalahCalculator.getPrayerTimes(location.latitude, location.longitude)
                         records.map { record ->
                             val newTime = when (record.type) {
                                 SalahType.FAJR -> SalahCalculator.formatTime(prayerTimes.fajr)
                                 SalahType.ZUHR -> SalahCalculator.formatTime(prayerTimes.dhuhr)
-                                SalahType.ASR -> record.time // Keeping your hardcoded time if it's already in DB
+                                SalahType.ASR -> record.time
                                 SalahType.MAGHRIB -> SalahCalculator.formatTime(prayerTimes.maghrib)
                                 SalahType.ISHA -> SalahCalculator.formatTime(prayerTimes.isha)
                             }
-                            
-                            // If the time in DB is different from calculated time (and not our test ASR time), 
-                            // we should ideally update the DB.
                             record.copy(time = newTime)
                         }
                     } else records
@@ -65,13 +58,14 @@ class HomeViewModel(
                             totalCount = updatedRecords.size
                         ) 
                     }
+                    
+                    // Alarms scheduled after records are confirmed to exist
+                    launch {
+                        PrayerNotificationWorker.scheduleNextPrayers(app)
+                        PrayerAlarmScheduler(app).scheduleAlarms()
+                    }
                 }
             }.collect()
-        }
-        
-        // Ensure notifications are scheduled on startup
-        viewModelScope.launch {
-            PrayerNotificationWorker.scheduleNextPrayers(app)
         }
     }
 
@@ -103,8 +97,9 @@ class HomeViewModel(
         )
         defaults.forEach { repository.insertRecord(it) }
         
-        // Refresh notifications after inserting records
+        // Alarms scheduled after initial insertion
         PrayerNotificationWorker.scheduleNextPrayers(app)
+        PrayerAlarmScheduler(app).scheduleAlarms()
     }
 
     private fun updateStatus(record: SalahRecord, newStatus: SalahStatus) {

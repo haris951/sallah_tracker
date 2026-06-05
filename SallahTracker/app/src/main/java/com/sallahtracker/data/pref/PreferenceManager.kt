@@ -43,7 +43,7 @@ class PreferenceManager(private val context: Context) {
     val notificationOffset: Flow<Int> = context.dataStore.data.map { it[NOTIFICATION_OFFSET] ?: 0 }
     val notificationsEnabled: Flow<Boolean> = context.dataStore.data.map { it[PRAYER_NOTIFICATIONS_ENABLED] ?: true }
     val alarmVolume: Flow<Int> = context.dataStore.data.map { it[ALARM_VOLUME] ?: 75 }
-    val selectedSound: Flow<String> = context.dataStore.data.map { it[SELECTED_SOUND] ?: "Adhan" }
+    val selectedSound: Flow<String> = context.dataStore.data.map { it[SELECTED_SOUND] ?: "Adhan 1" }
 
     fun isAlarmEnabled(type: SalahType): Flow<Boolean> = context.dataStore.data.map { it[prayerAlarmKey(type)] ?: true }
     fun getPrayerOffset(type: SalahType): Flow<Int> = context.dataStore.data.map { it[prayerOffsetKey(type)] ?: -10 }

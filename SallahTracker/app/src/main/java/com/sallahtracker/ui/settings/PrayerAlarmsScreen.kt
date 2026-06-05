@@ -1,5 +1,6 @@
 package com.sallahtracker.ui.settings
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,11 +21,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sallahtracker.data.model.SalahType
 import com.sallahtracker.ui.theme.*
+import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,6 +36,20 @@ fun PrayerAlarmsScreen(
     onBackClick: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+
+    LaunchedEffect(Unit) {
+        viewModel.uiEffect.collectLatest { effect ->
+            when (effect) {
+                is SettingsEffect.ShowToast -> {
+                    Toast.makeText(context, effect.message, Toast.LENGTH_SHORT).show()
+                }
+                is SettingsEffect.NavigateToLocationSettings -> { /* Handled in main settings */ }
+                is SettingsEffect.NavigateToPrayerAlarms -> { /* Already here */ }
+                else -> {}
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -55,6 +72,11 @@ fun PrayerAlarmsScreen(
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextDark)
+                    }
+                },
+                actions = {
+                    TextButton(onClick = { viewModel.onIntent(SettingsIntent.SendTestAlarm) }) {
+                        Text("Test Alarm", color = PrimaryGreen, fontWeight = FontWeight.Bold)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = BeigeBackground)
@@ -86,6 +108,7 @@ fun PrayerAlarmsScreen(
                 AlarmItemCard(
                     type = type,
                     settings = settings,
+                    selectedSound = state.selectedAlarmSound,
                     onToggle = { viewModel.onIntent(SettingsIntent.TogglePrayerAlarm(type, it)) },
                     onOffsetChange = { viewModel.onIntent(SettingsIntent.UpdatePrayerAlarmOffset(type, it)) }
                 )
@@ -188,9 +211,9 @@ fun PrayerAlarmsScreen(
                         }
                         Spacer(modifier = Modifier.height(12.dp))
                         listOf(
-                            "Gradually increasing volume to wake you gently",
-                            "Alarm will repeat until dismissed or snoozed",
-                            "5-minute snooze option available"
+                            "High priority full-screen alerts",
+                            "Exact timing with AlarmManager",
+                            "Persists even after phone restart"
                         ).forEach { feature ->
                             Row(modifier = Modifier.padding(vertical = 4.dp)) {
                                 Text(text = "•", color = PrimaryGreen, fontWeight = FontWeight.Bold)
@@ -223,6 +246,7 @@ fun PrayerAlarmsScreen(
 fun AlarmItemCard(
     type: SalahType,
     settings: AlarmSettings,
+    selectedSound: String,
     onToggle: (Boolean) -> Unit,
     onOffsetChange: (Int) -> Unit
 ) {
@@ -245,7 +269,7 @@ fun AlarmItemCard(
                         settings.offset > 0 -> "${settings.offset} min after"
                         else -> "On time"
                     }
-                    Text(text = "$offsetText • ${settings.soundAndVibration}", fontSize = 14.sp, color = TextLight)
+                    Text(text = "$offsetText • $selectedSound", fontSize = 14.sp, color = TextLight)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = if (showOptions) "Hide Options" else "Show Options",

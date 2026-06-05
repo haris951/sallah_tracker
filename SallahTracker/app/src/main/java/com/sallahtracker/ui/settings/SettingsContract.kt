@@ -47,6 +47,7 @@ sealed class SettingsIntent : UiIntent {
     object OpenHelpAndSupport : SettingsIntent()
     object RateApp : SettingsIntent()
     object SendTestNotification : SettingsIntent()
+    object SendTestAlarm : SettingsIntent()
     
     // Location Intents
     object DetectLocation : SettingsIntent()

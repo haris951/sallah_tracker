@@ -29,20 +29,35 @@ class SallahApp : Application() {
         repository = SalahRepository(database.salahDao())
         preferenceManager = PreferenceManager(applicationContext)
         
-        createNotificationChannel()
+        createNotificationChannels()
     }
 
-    private fun createNotificationChannel() {
+    private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "Prayer Reminders"
-            val descriptionText = "Notifications for prayer times"
-            val importance = NotificationManager.IMPORTANCE_HIGH
-            val channel = NotificationChannel("prayer_reminders", name, importance).apply {
-                description = descriptionText
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            
+            // Channel 1: Standard Prayer Notifications
+            val reminderChannel = NotificationChannel(
+                "prayer_reminders",
+                "Prayer Reminders",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Standard notifications for prayer times"
             }
-            val notificationManager: NotificationManager =
-                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
+            notificationManager.createNotificationChannel(reminderChannel)
+            
+            // Channel 2: Full-screen Prayer Alarms
+            val alarmChannel = NotificationChannel(
+                "prayer_alarms_channel",
+                "Prayer Alarms",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Full screen alarms for prayer times"
+                setSound(null, null) // Sound is handled by AlarmActivity
+                enableVibration(true)
+                setBypassDnd(true)
+            }
+            notificationManager.createNotificationChannel(alarmChannel)
         }
     }
 }
